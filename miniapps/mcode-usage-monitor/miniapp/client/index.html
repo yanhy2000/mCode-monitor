@@ -155,7 +155,7 @@ body.editing #layoutReset{display:none}
 .kpi.dragging{opacity:.55}
 .kpi.drop-before{box-shadow:inset 0 3px 0 var(--mcode-accent)}
 .kpi.drop-after{box-shadow:inset 0 -3px 0 var(--mcode-accent)}
-#kpis:empty,#cards:empty{display:none}
+#kpis:empty{display:none} /* KPI 删光时隐藏占位容器 */
 .panel.drop-before{box-shadow:inset 0 3px 0 var(--mcode-accent)}
 .panel.drop-after{box-shadow:inset 0 -3px 0 var(--mcode-accent)}
 body.dragging-card{user-select:none;cursor:grabbing}
@@ -179,7 +179,8 @@ footer a{color:var(--mcode-accent);text-decoration:none}
 footer a:hover{text-decoration:underline}
 #toast{position:fixed;top:14px;right:14px;background:var(--mcode-bg-secondary);
   border:1px solid var(--mcode-danger);color:var(--mcode-danger);border-radius:8px;
-  padding:8px 14px;font-size:13px;display:none;max-width:420px;z-index:99}
+  padding:8px 14px;font-size:13px;display:none;max-width:420px;z-index:99;
+  pointer-events:none} /* 纯通知, 不拦截其下顶栏图标的点击 */
 
 /* ---------- 响应式 ---------- */
 @media (max-width:720px){
@@ -310,6 +311,7 @@ footer a:hover{text-decoration:underline}
   <div class="phead"><h2>模型对比</h2>
     <span class="sub">点击柱子可只看该模型，再次点击取消</span></div>
   <div id="modelChart" class="chart"></div>
+  <div class="empty" id="modelEmpty" style="display:none">当前筛选条件下没有数据</div>
 </section>
 
 <section class="panel narrow" data-card="proj" aria-label="项目用量">
@@ -326,7 +328,7 @@ footer a:hover{text-decoration:underline}
 
 <section class="panel" data-card="speed" aria-label="Token 速度">
   <div class="phead"><h2>Token 速度</h2>
-    <span class="sub">tokens/sec · 每次完成请求</span></div>
+    <span class="sub">tokens/sec · 最近 60 次完成请求</span></div>
   <div id="speedChart" class="chart"></div>
   <div class="empty" id="speedEmpty" style="display:none">当前筛选条件下没有速度数据</div>
 </section>
@@ -346,6 +348,7 @@ footer a:hover{text-decoration:underline}
   <div class="tfoot" id="recentFoot"></div>
 </section>
 </div>
+<div class="sub" id="cardsHint" style="display:none;text-align:center;padding:20px 0">所有卡片已隐藏，点「重置布局」可恢复</div>
 
 <footer>数据来源于本地数据库，仅本地处理<br>建议与反馈请到 <a href="https://github.com/yanhy2000/mCode-monitor" target="_blank" rel="noreferrer">GitHub 仓库</a> · v__VERSION__</footer>
 </div>
@@ -378,7 +381,7 @@ const rangeLabel=v=>RANGE_LABEL[v]||(CUSTOM_RANGE_RE.test(v)?parseInt(v,10)+'H':
 /* 当前生效范围: 优先读下拉值; 瞬时无匹配项时退回记忆值, 避免发出空 range */
 const currentRange=()=>{const v=$('range').value;return (v&&v!=='custom')?v:rangeApplied;};
 
-/* ---------- 主题: 跟随系统配色; 按钮可临时切换, 不持久化 ---------- */
+/* ---------- 主题: 跟随系统配色; 手动切换会被记住(随偏好持久化) ---------- */
 const THEME={
   dark:{axis:'#ffffff2e',label:'#94949e'.replace('9e','9f'),split:'#ffffff12',
         tipBg:'#262626',tipBorder:'#ffffff14',tipText:'#ededed'},
@@ -456,7 +459,7 @@ function toast(msg,kind){ // kind: 'ok' 成功 | 'info' 中性提示 | 缺省=�
 }
 
 function modelTag(m){
-  return `<span class="tag">${m}</span>`;
+  return `<span class="tag">${esc(m)}</span>`;
 }
 
 /* ---------- 多选下拉 ---------- */
@@ -476,28 +479,41 @@ function positionPanel(btn,panel,wMax=300){
   panel.style.right='auto';
 }
 
-function renderDd(avail){
+function renderDd(avail,{force=false}={}){
   const list=$('ddList');
+  // 面板打开期间不重建(自动刷新 5s 一次, 整表重建会打断进行中的点击);
+  // 程序化更新(全选/反选/图表点选)用 force 立即刷新
+  if($('ddPanel').classList.contains('open')&&!force)return;
+  const keepTop=list.scrollTop;
   const order=(avail||[]).map(m=>m.model);
+  // 已选但不在当前清单的项目(受另一侧筛选/范围收窄): 保持选中, 面板中给出提示
+  const hiddenN=sel?sel.filter(x=>!order.includes(x)).length:0;
 
   list.innerHTML=(avail||[]).map((m,i)=>`
     <label class="ddrow">
-      <input type="checkbox" data-model="${m.model}" ${(!sel||sel.includes(m.model))?'checked':''}>
+      <input type="checkbox" data-model="${esc(m.model)}" ${(!sel||sel.includes(m.model))?'checked':''}>
       <span class="swatch" style="background:${colorOf(i)}"></span>
       <span class="mname" title="${esc(m.model)}">${esc(truncName(m.model,20))}</span>
       <span class="mmeta">${fmt(m.calls)} 次 · ${fmtTok(m.output)} out</span>
     </label>`).join('') || '<div class="sub" style="padding:8px">当前范围无模型数据</div>';
+  if(hiddenN)list.innerHTML+=`<div class="sub" style="padding:8px">另有 ${hiddenN} 个已选模型不在当前清单中</div>`;
 
   list.querySelectorAll('input[data-model]').forEach(cb=>{
     cb.onchange=()=>{
       const all=order.slice();
       const picked=[...list.querySelectorAll('input[data-model]')]
         .filter(x=>x.checked).map(x=>x.dataset.model);
-      // 允许全不选(空数组): 页面数据为 0; 勾满全部则回到"全部"状态
-      sel=(picked.length===all.length&&all.length)?null:picked;
+      // 不可见的已选项并回, 勾选操作只做"加/减可见项", 不整表替换
+      const visible=new Set(all);
+      const hidden=(sel||[]).filter(x=>!visible.has(x));
+      // 允许全不选(空数组): 页面数据为 0; 勾满全部则回到"全部"状态。
+      // 交叉筛选下列表可能被会话筛选收窄, 此时勾满≠全部, 保持显式数组
+      sel=(picked.length===all.length&&all.length&&selSess===null)
+        ?null:[...hidden,...picked];
       updateDdLabel();updateDdActions();savePrefs();load();
     };
   });
+  list.scrollTop=keepTop; // 自动刷新重建时保留滚动位置
   updateDdLabel();
   updateDdActions();
 }
@@ -523,12 +539,13 @@ function updateDdActions(){
   $('sdInvert').title='反转当前选择';
 }
 
-/* 反选: 全部->空选, 空选->全部, 部分选中取补集 */
+/* 反选: 全部->空选, 空选->全部, 部分选中取补集; 不可见的已选项保留不参与翻转 */
 function invertSel(all,cur){
   if(cur==null)return [];
   if(cur.length===0)return null;
-  const inv=all.filter(m=>!cur.includes(m));
-  return inv.length===all.length?null:inv;
+  const hidden=cur.filter(x=>!all.includes(x));
+  const inv=[...hidden,...all.filter(m=>!cur.includes(m))];
+  return (hidden.length===0&&inv.length===all.length)?null:inv;
 }
 
 function ddSet(mode){
@@ -536,7 +553,7 @@ function ddSet(mode){
   const all=lastData.available_models.map(m=>m.model);
   if(mode==='all')sel=null;
   else sel=invertSel(all,sel);
-  renderDd(lastData.available_models);
+  renderDd(lastData.available_models,{force:true});
   savePrefs();load();
 }
 
@@ -547,10 +564,12 @@ function sessName(s){
   return t||s.session_id.slice(0,8);
 }
 
-function renderSd(avail){
+function renderSd(avail,{force=false}={}){
   const list=$('sdList');
+  if($('sdPanel').classList.contains('open')&&!force)return; // 打开期间不重建
   const keepTop=list.scrollTop;
   const order=(avail||[]).map(s=>s.session_id);
+  const hiddenN=selSess?selSess.filter(x=>!order.includes(x)).length:0;
 
   list.innerHTML=(avail||[]).map(s=>{
     const name=sessName(s);
@@ -561,13 +580,17 @@ function renderSd(avail){
       <span class="mmeta">${s.calls?`${fmt(s.calls)} 次 · ${fmtTok(s.tokens)}`:'无用量数据'}</span>
     </label>`;
   }).join('') || '<div class="sub" style="padding:8px">当前范围无会话数据</div>';
+  if(hiddenN)list.innerHTML+=`<div class="sub" style="padding:8px">另有 ${hiddenN} 个已选会话不在当前清单中</div>`;
 
   list.querySelectorAll('input[data-sess]').forEach(cb=>{
     cb.onchange=()=>{
       const picked=[...list.querySelectorAll('input[data-sess]')]
         .filter(x=>x.checked).map(x=>x.dataset.sess);
-      // 允许全不选(空数组): 页面数据为 0
-      selSess=(picked.length===order.length&&order.length)?null:picked;
+      const visible=new Set(order);
+      const hidden=(selSess||[]).filter(x=>!visible.has(x));
+      // 允许全不选(空数组): 页面数据为 0; 勾满仅在列表未被模型筛选收窄时回到"全部"
+      selSess=(picked.length===order.length&&order.length&&sel===null)
+        ?null:[...hidden,...picked];
       updateSdLabel();updateDdActions();savePrefs();load();
     };
   });
@@ -592,7 +615,7 @@ function sdSet(mode){
   const all=sessList().map(s=>s.session_id);
   if(mode==='all')selSess=null;
   else selSess=invertSel(all,selSess);
-  renderSd(sessList());
+  renderSd(sessList(),{force:true});
   savePrefs();load();
 }
 
@@ -621,6 +644,15 @@ bindDd('ddBtn','ddPanel');
 bindDd('sdBtn','sdPanel');
 bindDd('ivBtn','ivPanel',150);
 document.addEventListener('click',closeAllDd);
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape')closeAllDd(); // Esc 收起展开中的下拉面板
+});
+window.addEventListener('resize',()=>{ // 缩放时重新收敛展开中的面板, 防溢出视口
+  DD_PAIRS.forEach(([b,p])=>{
+    const btn=$(b),panel=$(p);
+    if(panel.classList.contains('open'))positionPanel(btn,panel,b==='ivBtn'?150:300);
+  });
+});
 
 /* ---------- 刷新间隔: 时钟图标 + 小面板(单选档位) ---------- */
 const IV_OPTS=[[0,'手动刷新'],[5,'自动 5s'],[10,'自动 10s'],[30,'自动 30s']];
@@ -676,28 +708,23 @@ function apiUrl(){
   return u;
 }
 
+let loadInFlight=false;
 async function load(){
+  if(loadInFlight)return; // 上一轮未完成时跳过, 避免慢查询下请求堆积
+  loadInFlight=true;
   try{
-    const r=await fetch(apiUrl());
+    // 35s 熔断(略大于服务端 30s 查询超时): 挂死的连接也会释放 inFlight, 下轮可重试
+    const r=await fetch(apiUrl(),{signal:AbortSignal.timeout(35000)});
     const d=await r.json();
     if(d.error){toast('读取失败: '+d.error);return}
     lastData=d;
-    // 选中项若已不在可用列表，自动收敛(允许收敛为空选, 语义仍是"只看这些")
-    if(sel){
-      const avail=new Set(d.available_models.map(m=>m.model));
-      const kept=sel.filter(m=>avail.has(m));
-      if(kept.length!==sel.length)sel=kept;
-    }
-    if(selSess){
-      const avail=new Set((d.available_sessions||[]).map(s=>s.session_id));
-      const kept=selSess.filter(id=>avail.has(id));
-      if(kept.length!==selSess.length)selSess=kept;
-    }
+    // 选择不自动收敛: 可用列表随另一侧筛选与时间范围变化,
+    // 已选项可能暂不可见但始终生效, 切回范围后自然恢复
     render(d);
-    const unit=d.session_source==='files'?'个会话文件':'个会话';
     $('dbinfo').textContent=
-      `已更新 ${d.generated_at.slice(11,19)} · ${d.session_files??d.overview.sessions} ${unit}`;
+      `已更新 ${d.generated_at.slice(11,19)} · ${d.session_files??d.overview.sessions} 个会话`;
   }catch(e){toast('请求失败: '+e.message)}
+  finally{loadInFlight=false}
 }
 
 /* 当前筛选口径描述: 用于时序卡片副标题与 KPI hint */
@@ -808,7 +835,11 @@ function renderMain(d){
 }
 
 function renderModels(ms){
-  if(!window.echarts||!chartVisible('modelChart'))return;
+  if(!chartVisible('modelChart'))return;
+  const has=!!ms.length; // 与其他卡片一致的空态兜底
+  $('modelEmpty').style.display=has?'none':'block';
+  $('modelChart').style.display=has?'block':'none';
+  if(!has||!window.echarts)return;
   if(!modelChart){
     modelChart=echarts.init($('modelChart'));
     modelChart.on('click',p=>{
@@ -816,7 +847,7 @@ function renderModels(ms){
       const m=p.name;
       if(sel&&sel.length===1&&sel[0]===m)sel=null;   // 再点一次取消
       else sel=[m];                                   // 只看这一个
-      if(lastData)renderDd(lastData.available_models);
+      if(lastData)renderDd(lastData.available_models,{force:true});
       load();
     });
   }
@@ -958,8 +989,8 @@ function renderRecent(rs){
   $('recentBody').innerHTML=rs.length?rs.map(r=>`<tr>
     <td>${r.time}</td>
     <td title="${esc(r.model)}">${modelTag(r.model)}</td>
-    <td title="${r.session_id}" style="max-width:200px;overflow:hidden;
-        text-overflow:ellipsis;white-space:nowrap;text-align:left">${r.session||r.session_id.slice(0,12)}</td>
+    <td title="${esc(r.session||r.session_id)}" style="max-width:200px;overflow:hidden;
+        text-overflow:ellipsis;white-space:nowrap;text-align:left">${esc(r.session||r.session_id.slice(0,12))}</td>
     <td>${fmt(r.input)}</td>
     <td>${fmt(r.output)}</td>
     <td>${fmt(r.cache_read)}</td>
@@ -1121,6 +1152,7 @@ function applyVisibility(){
     const el=cardEl(id);if(!el)return;
     el.style.display=cardOrder.includes(id)?'':'none';
   });
+  $('cardsHint').style.display=cardOrder.length?'none':'block'; // 全部移除时给出恢复入口
 }
 function clearHints(){
   document.querySelectorAll('.drop-before,.drop-after')
@@ -1362,13 +1394,19 @@ if(window.ResizeObserver){
     applyTheme();
     updateIvUI();
     setTimer(); // 启动即开始按所选间隔自动刷新
-    startLoad();
+    load();     // 取数不依赖图表库: KPI/表格/筛选先行可用
+    waitEcharts();
   });
 })();
 
-function startLoad(){
-  if(window.echarts)load();
-  else setTimeout(startLoad,300);
+/* 图表库就绪后补绘(最多等 12s); 超时给出可见提示, 不再无限等待 */
+function waitEcharts(n=0){
+  if(window.echarts){if(lastData)render(lastData);return}
+  if(n>=40){
+    console.error('echarts.min.js 未加载, 图表不可用');
+    toast('图表库加载失败，仅数字与表格可用','info');return;
+  }
+  setTimeout(()=>waitEcharts(n+1),300);
 }
 </script>
 </body>
