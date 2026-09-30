@@ -50,7 +50,7 @@
 
 页面位于 `miniapp/client/index.html`（ECharts 已本地化打包），Node 入口位于 `miniapp/node/server.mjs`，数据后端位于 `miniapp/node/api.py`，无需构建。
 
-已验证环境：MiniMax Code 桌面端 `3.0.73.166`，Windows（10.0.26200，x64）。开发过程中已验证：插件安装与打开、数据聚合与去重、模型/会话筛选、偏好记忆、自动刷新、主题切换、图表与列表渲染、时间范围预设与自定义输入校验。筛选全不选、编辑布局（拖拽排序与移除）待实测后补充。macOS 与 Linux 未验证。
+已验证环境：MiniMax Code 桌面端 `3.0.73.166`，Windows（10.0.26200，x64）。开发过程中已验证：插件安装与打开、数据聚合与去重、模型/会话筛选、偏好记忆、自动刷新、主题切换、图表与列表渲染、时间范围预设与自定义输入校验、筛选全不选、编辑布局（拖拽排序与移除）、顶栏图标化与最近调用表格优化。macOS 与 Linux 未验证。
 
 第三方组件：[ECharts](https://echarts.apache.org/)（Apache License 2.0），已本地化打包以便离线使用。
 

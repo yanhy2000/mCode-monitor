@@ -50,7 +50,7 @@ The runtime sends nothing to external services and has no telemetry. It writes a
 
 The page is in `miniapp/client/index.html` (ECharts is bundled locally), the Node entry is `miniapp/node/server.mjs`, and the data backend is `miniapp/node/api.py`. No build step is required.
 
-Verified environment: MiniMax Code desktop `3.0.73.166` on Windows (10.0.26200, x64). Verified during development: plugin install and open, aggregation and de-duplication, model/session filtering, preference persistence, auto refresh, theme switching, chart and table rendering, and time-range presets with custom-range validation. Selecting no filter and layout editing (drag reordering and removal) are pending hands-on testing. macOS and Linux are unverified.
+Verified environment: MiniMax Code desktop `3.0.73.166` on Windows (10.0.26200, x64). Verified during development: plugin install and open, aggregation and de-duplication, model/session filtering, preference persistence, auto refresh, theme switching, chart and table rendering, time-range presets with custom-range validation, selecting-no-filter, layout editing (drag reordering and removal), the icon-only header controls, and the recent-calls table tweaks. macOS and Linux are unverified.
 
 Third-party components: [ECharts](https://echarts.apache.org/) (Apache License 2.0), bundled locally for offline use.
 
