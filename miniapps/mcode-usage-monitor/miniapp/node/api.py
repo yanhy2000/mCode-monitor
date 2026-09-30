@@ -287,10 +287,10 @@ def build_payload(db_path: Path, range_key: str, models_filter=None,
         available_sessions.sort(key=lambda x: -x["last_ts"])
 
     rows = rows_all
-    if models_filter:
+    if models_filter is not None:  # None=不过滤; 空集=显式全不选(0 数据)
         wanted = set(models_filter)
         rows = [r for r in rows if (r[1] or "unknown") in wanted]
-    if sessions_filter:
+    if sessions_filter is not None:
         wanted_s = set(sessions_filter)
         rows = [r for r in rows if r[2] in wanted_s]
 
@@ -456,8 +456,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--range", default="all", dest="range_key",
                     help="all | today | 1h | 12h | 24h | 7d | 30d | <N>h(1..8760)")
-    ap.add_argument("--models", default="", help="逗号分隔的模型列表, 留空为全部")
-    ap.add_argument("--sessions", default="", help="逗号分隔的会话 id 列表, 留空为全部")
+    ap.add_argument("--models", default="", help="逗号分隔的模型列表, 留空为全部, __none__ 为空选")
+    ap.add_argument("--sessions", default="", help="逗号分隔的会话 id 列表, 留空为全部, __none__ 为空选")
     ap.add_argument("--db", default=str(default_db_path()))
     args = ap.parse_args()
 
@@ -466,8 +466,15 @@ def main():
         sys.exit(code)
 
     rng = args.range_key if is_valid_range(args.range_key) else "all"
-    models = [p.strip() for p in args.models.split(",") if p.strip()] or None
-    sessions = [p.strip() for p in args.sessions.split(",") if p.strip()] or None
+
+    def parse_ids(raw):
+        """空串 -> None(不过滤); '__none__' -> [](显式空选, 页面 0 数据)。"""
+        if raw == "__none__":
+            return []
+        return [p.strip() for p in raw.split(",") if p.strip()] or None
+
+    models = parse_ids(args.models)
+    sessions = parse_ids(args.sessions)
 
     db = Path(args.db)
     if not db.exists():
