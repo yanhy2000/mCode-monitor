@@ -272,7 +272,8 @@ export async function start(context) {
         if (cache.size <= CACHE_MAX) break;
       }
     }
-    entry.promise.catch(() => cache.delete(key)); // 失败(含取消)不缓存
+    // 失败(含取消)不缓存; 若同 key 已被新查询换条目, 只删自己的那条, 别误删新查询
+    entry.promise.catch(() => { if (cache.get(key) === entry) cache.delete(key); });
     queue = entry.promise.catch(() => {}); // 链条继续
     return entry;
   }
